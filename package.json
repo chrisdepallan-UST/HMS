@@ -1,0 +1,21 @@
+{
+  "name": "hms",
+  "version": "1.0.0",
+  "description": "Hospital management system using Node.js and express",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/chrisdepallan-UST/HMS.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/chrisdepallan-UST/HMS/issues"
+  },
+  "homepage": "https://github.com/chrisdepallan-UST/HMS#readme"
+}
