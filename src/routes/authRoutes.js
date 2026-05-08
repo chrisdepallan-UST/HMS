@@ -1,0 +1,16 @@
+const express = require("express");
+const router = express.Router();
+const { body } = require("express-validator");
+const validate = require("../middleware/validate");
+const auth = require("../middleware/authMiddleware");
+const authController = require("../controllers/authController");
+const authValidation=require("../middleware/validation/authValidation");
+router.post("/signup", authValidation.signupValidation, validate, authController.signup);
+router.post("/login", authValidation.loginValidation, validate, authController.login);
+router.post("/logout", auth, authController.logout);
+router.get("/me", auth, authController.me);
+router.get("/verify-email", authController.verifyEmail);
+router.post( "/resend-verification",authValidation.resendValidation,validate,authController.resendVerification);
+router.post("/forgot-password", authValidation.forgotValidation, validate, authController.forgotPassword);
+router.post("/reset-password", authValidation.resetValidation, validate, authController.resetPassword);
+module.exports = router;
