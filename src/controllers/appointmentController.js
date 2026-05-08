@@ -17,7 +17,13 @@ exports.createAppointment = async (req, res) => {
     // Generate a unique appointmentId
     const appointmentId = crypto.randomBytes(16).toString("hex");
 
-
+ //check if there is a db connection
+    if (!Appointment) {
+      return res.status(500).json({ message: "Database connection error" });
+    }
+    else{
+      console.log("Database connection is healthy");
+    }
     
     const appointment = await Appointment.create({
       appointmentId, // Add the unique appointmentId
