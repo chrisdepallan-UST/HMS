@@ -1,7 +1,13 @@
-const app = require('./app');
+require("dotenv").config();
+
+const app = require("./app");
+const connectDB = require("./config/db");
+
 const PORT = process.env.PORT || 5000;
 
-app.listen(PORT, () => {
-  console.log(`Server running on http://localhost:${PORT}`);
-  console.log(`Swagger docs at http://localhost:${PORT}/api-docs`);
+connectDB().then(() => { // NOSONAR - top-level await is unavailable in CommonJS modules
+  app.listen(PORT, () => {
+    console.log(`Server running on port ${PORT}`);
+    console.log("MongoDB connected");
+  });
 });

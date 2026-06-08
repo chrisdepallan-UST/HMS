@@ -1,381 +1,417 @@
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
-const crypto = require("crypto");
-const User = require("../models/User");
-const Patient = require("../models/Patient");
-const Doctor = require("../models/Doctor");
-const Appointment = require("../models/Appointment");
+const crypto = require("node:crypto");
+const User = require("../models/Users");
+const Employee = require("../models/Employees");
 const sendEmail = require("../utils/sendEmail");
+const emailTemplates = require("../utils/emailTemplates");
+const buildEmployeeProfile = require("../utils/buildEmployeeProfile");
+const buildEmployeeData = require("../utils/buildEmployeeData");
+const validateUniqueEmployeeFields = require("../validators/validateUniqueEmployeeFields");
+const getCurrentUser = require("../utils/getCurrentUser");
+const { RESTRICTED_ROLES_SET } = require("../config/constants");
+require("dotenv").config();
 
-
-// ─── SIGNUP ────────────────────────────────────────────────────────────────
-exports.signup = async (req, res) => {
-  try {
-    const {
-      role,
-      email,
-      password,
-      first_name,
-      last_name,
-      phone,
-      date_of_birth,
-      gender,
-      nhs_number,
-      address,
-      specialisation,
-      license_number,
-    } = req.body;
-
-    const existingUser = await User.findOne({ email });
-    if (existingUser) {
-      return res.status(409).json({ message: "Email already registered" });
-    }
-
-    const password_hash = await bcrypt.hash(password, 12);
-
-    let profile = null;
-
-    if (role === "patient") {
-      profile = await Patient.create({
-        first_name,
-        last_name,
-        email,
-        phone,
-        date_of_birth,
-        gender,
-        nhs_number,
-        address,
-      });
-    } else if (role === "doctor") {
-      profile = await Doctor.create({
-        first_name,
-        last_name,
-        email,
-        phone,
-        specialisation,
-        license_number,
-      });
-    } else {
-      return res
-        .status(400)
-        .json({ message: "Role must be patient or doctor" });
-    }
-
-    // Generate verification token
-    const verification_token = crypto.randomBytes(32).toString("hex");
-    const verification_token_expiry = new Date(
-      Date.now() + 24 * 60 * 60 * 1000,
-    ); // 24 hours
-
-    const user = await User.create({
-      email,
-      password_hash,
-      role,
-      ref_id: profile._id,
-      ref_type: role === "patient" ? "Patient" : "Doctor",
-      verification_token,
-      verification_token_expiry,
-    });
-
-    // Send verification email
-    const verifyUrl = `${process.env.FRONTEND_URL}/verify-email?token=${verification_token}`;
-    await sendEmail({
-      to: user.email,
-      subject: "HMS — Verify Your Email",
-      html: `
-        <h2>Welcome to HMS</h2>
-        <p>Hi ${first_name}, thank you for registering.</p>
-        <p>Please verify your email address by clicking the link below:</p>
-        <a href="${verifyUrl}" target="_blank">${verifyUrl}</a>
-        <p>This link expires in <strong>24 hours</strong>.</p>
-        <p>If you did not create an account, please ignore this email.</p>
-      `,
-    });
-
-    const token = jwt.sign(
-      { id: user._id, role: user.role },
-      process.env.JWT_SECRET,
-      { expiresIn: process.env.JWT_EXPIRES_IN },
-    );
-
-    res.status(201).json({
-      message:
-        "Account created successfully. Please check your email to verify your account.",
-      token,
-      user: {
-        id: user._id,
-        email: user.email,
-        role: user.role,
-        is_verified: user.is_verified,
-        profile_id: profile._id,
-      },
-    });
-  } catch (err) {
-    console.error("Signup error:", err);
-    res.status(500).json({ message: "Server error during signup" });
-  }
-};
-
-// ─── LOGIN ─────────────────────────────────────────────────────────────────
+// Authenticate a user and return a JWT with their roles
 exports.login = async (req, res) => {
-  try {
-    const { email, password } = req.body;
 
-    const user = await User.findOne({ email });
-    if (!user) {
-      return res.status(401).json({ message: "Invalid email or password" });
-    }
+    try {
+        const { email, password } = req.body;
 
-    const isMatch = await bcrypt.compare(password, user.password_hash);
-    if (!isMatch) {
-      return res.status(401).json({ message: "Invalid email or password" });
-    }
+        const user = await User.findOne({ email });
+        if (!user) {
+            return res.status(401).json({
+                message: "Invalid email or password"
+            });
+        }
 
-    // Block unverified users
-    if (!user.is_verified) {
-      return res.status(403).json({
-        message:
-          "Please verify your email before logging in. Check your inbox or request a new verification link.",
-      });
-    }
+        const isMatch = Boolean(await bcrypt.compare(password, user.passwordHash));
+        if (!isMatch) {
+            return res.status(401).json({
+                message: "Invalid email or password"
+            });
+        }
 
-    user.last_login = new Date();
-    await user.save();
+        // Block login for non-ACTIVE accounts with a status-specific message
+        const blockedStatuses = {
+            PENDING: "Admin approval is pending",
+            REJECTED: "Registration request is rejected",
+            INACTIVE: "Account is inactive"
+        };
 
-    const profile = await (user.ref_type === "Patient" ? Patient : Doctor)
-      .findById(user.ref_id)
-      .select("-__v");
+        const blockedMessage = blockedStatuses[user.status];
 
-    const token = jwt.sign(
-      { id: user._id, role: user.role },
-      process.env.JWT_SECRET,
-      { expiresIn: process.env.JWT_EXPIRES_IN },
-    );
+        if (blockedMessage) {
+            return res.status(403).json({
+                message: blockedMessage
+            });
+        }
 
-    res.status(200).json({
-      message: "Login successful",
-      token,
-      user: {
-        id: user._id,
-        email: user.email,
-        role: user.role,
-        is_verified: user.is_verified,
-        last_login: user.last_login,
-        profile,
-      },
-    });
-  } catch (err) {
-    console.error("Login error:", err);
-    res.status(500).json({ message: "Server error during login" });
-  }
-};
+        user.lastLoginAt = new Date();
+        await user.save();
 
-// ─── LOGOUT ────────────────────────────────────────────────────────────────
-exports.logout = (req, res) => {
-  res.status(200).json({ message: "Logged out successfully" });
-};
+        // Load the linked employee profile to include in the response
+        const employee = await Employee.findOne({
+            employeeCode: user.employeeCode
+        }).select("-__v");
 
-// ─── ME ────────────────────────────────────────────────────────────────────
-exports.me = async (req, res) => {
-  try {
-    console.log(req.user.id);
-    const user = await User.findById(req.user.id).select("-password_hash -__v");
-    if (!user) {
-      return res.status(404).json({ message: "User not found" });
-    }
+        if (!employee) {
+            return res.status(404).json({
+                message: "Employee profile not found!!"
+            });
+        }
 
-    const profile = await (user.ref_type === "Patient" ? Patient : Doctor)
-      .findById(user.ref_id)
-      .select("-__v");
- const appointments = await Appointment.find(
-      user.role === "patient" ? { patientId: user.ref_id }  : { doctorId: user.ref_id }).select("-__v ");
-    // const appointments =async ()=>{
-    // if(user.ref_type==="Patient"){
-    //    return  await Appointment.find({ patientId: user.ref_id });
-      
-    // }
-    // else{
-    //    return  await Appointment.find({ doctorId: user.ref_id });
-    // }}
-    res.status(200).json({
-      user: {
-        id: user._id,
-        email: user.email,
-        role: user.role,
-        is_verified: user.is_verified,
-        last_login: user.last_login,
-        created_at: user.created_at,
-      },
-      profile,appointments
-      
-      
-    });
-  } catch (err) {
-    console.error("Me error:", err);
-    res.status(500).json({ message: err.message });
-  }
-};
+        const profile = buildEmployeeProfile(employee);
 
-// ─── VERIFY EMAIL ──────────────────────────────────────────────────────────
-exports.verifyEmail = async (req, res) => {
-  try {
-    const { token } = req.query;
+        // Sign a JWT containing the employee code and roles
+        const token = jwt.sign(
+            {
+                employeeCode: user.employeeCode,
+                roles: user.roles
+            },
+            process.env.JWT_SECRET,
+            {
+                expiresIn: process.env.JWT_EXPIRES_IN
+            }
+        );
 
-    if (!token) {
-      return res
-        .status(400)
-        .json({ message: "Verification token is required" });
-    }
-
-    const user = await User.findOne({
-      verification_token: token,
-      verification_token_expiry: { $gt: new Date() },
-    });
-
-    if (!user) {
-      return res
-        .status(400)
-        .json({ message: "Invalid or expired verification token" });
-    }
-
-    if (user.is_verified) {
-      return res
-        .status(200)
-        .json({ message: "Email already verified. You can log in." });
-    }
-
-    user.is_verified = true;
-    user.verification_token = null;
-    user.verification_token_expiry = null;
-    await user.save();
-
-    res
-      .status(200)
-      .json({ message: "Email verified successfully. You can now log in." });
-  } catch (err) {
-    console.error("Verify email error:", err);
-    res.status(500).json({ message: err.message });
-  }
-};
-
-// ─── RESEND VERIFICATION ───────────────────────────────────────────────────
-exports.resendVerification = async (req, res) => {
-  try {
-    const { email } = req.body;
-
-    const user = await User.findOne({ email });
-
-    // Always return 200 to prevent email enumeration
-    if (!user) {
-      return res
-        .status(200)
-        .json({
-          message: "If that email exists, a verification link has been sent",
+        res.status(200).json({
+            message: "Login successful",
+            token,
+            user: {
+                employeeCode: user.employeeCode,
+                username: user.username,
+                email: user.email,
+                roles: user.roles,
+                mustChangePassword: user.mustChangePassword,
+                lastLoginAt: user.lastLoginAt,
+                profile
+            }
         });
     }
+    catch (err) {
+    console.error("Login error:", err);
 
-    if (user.is_verified) {
-      return res
-        .status(200)
-        .json({ message: "Email is already verified. You can log in." });
-    }
-
-    // Generate new token
-    user.verification_token = crypto.randomBytes(32).toString("hex");
-    user.verification_token_expiry = new Date(Date.now() + 24 * 60 * 60 * 1000);
-    await user.save();
-
-    const verifyUrl = `${process.env.FRONTEND_URL}/verify-email?token=${user.verification_token}`;
-    await sendEmail({
-      to: user.email,
-      subject: "HMS — Verify Your Email",
-      html: `
-        <h2>Email Verification</h2>
-        <p>Click the link below to verify your email address:</p>
-        <a href="${verifyUrl}" target="_blank">${verifyUrl}</a>
-        <p>This link expires in <strong>24 hours</strong>.</p>
-        <p>If you did not request this, please ignore this email.</p>
-      `,
+    res.status(500).json({
+        message: err.message,
+        name: err.name
     });
+}
+}
 
-    res
-      .status(200)
-      .json({
-        message: "If that email exists, a verification link has been sent",
-      });
-  } catch (err) {
-    console.error("Resend verification error:", err);
-    res.status(500).json({ message: err.message });
-  }
-};
+// Allow an authenticated user to change their own password
+exports.changePassword = async (req, res) => {
 
-// ─── FORGOT PASSWORD ───────────────────────────────────────────────────────
+    try {
+        const employeeCode = req.user.employeeCode;
+
+        const {
+            currentPassword,
+            newPassword,
+            confirmPassword
+        } = req.body;
+
+        const user = await User.findOne({
+            employeeCode
+        });
+
+        if (!user) {
+            return res.status(404).json({
+                message: "User not found!!"
+            });
+        }
+
+        const isMatch = Boolean(await bcrypt.compare(currentPassword, user.passwordHash));
+        if (!isMatch) {
+            return res.status(401).json({
+                message: "Current password is incorrect"
+            });
+        }
+
+        if (newPassword !== confirmPassword) {
+            return res.status(400).json({
+                message: "Passwords do not match!!"
+            });
+        }
+
+        const samePassword = Boolean(await bcrypt.compare(newPassword, user.passwordHash));
+        if (samePassword) {
+            return res.status(400).json({
+                message: "New password cannot be the same as current password"
+            })
+        }
+
+        // Hash and persist the new password, clearing the forced-change flag
+        const newPassHash = await bcrypt.hash(newPassword, 10);
+
+        user.passwordHash = newPassHash;
+        user.mustChangePassword = false;
+
+        await user.save();
+
+        res.status(200).json({
+            message: "Password changed successfully"
+        });
+
+    }
+    catch (err) {
+        console.error("Error during password change: ", err);
+        return res.status(500).json({
+            message: "Server error during password change"
+        });
+    }
+}
+
+// Generate a short-lived reset token and email it to the user
 exports.forgotPassword = async (req, res) => {
-  try {
-    const { email } = req.body;
 
-    const user = await User.findOne({ email });
-    if (!user) {
-      return res
-        .status(200)
-        .json({ message: "If that email exists, a reset link has been sent" });
+    try {
+        const { email } = req.body;
+
+        const user = await User.findOne({
+            email
+        });
+
+        if (
+            !user ||
+            String(user.status) !== "ACTIVE"
+        ) {
+            return res.status(200).json({
+                message:
+                    "If the email exists, a reset link has been sent"
+            });
+        }
+
+        // Create a random token, store only its hash so the raw value cannot be recovered from the DB
+        const resetPasswordToken = crypto.randomBytes(32).toString("hex");
+        const resetPasswordTokenExpiry = new Date(Date.now() + 15 * 60 * 1000);
+
+        const resetPasswordTokenHash =
+            crypto
+                .createHash("sha256")
+                .update(resetPasswordToken)
+                .digest("hex");
+
+        user.resetPasswordTokenHash = resetPasswordTokenHash;
+        user.resetPasswordTokenExpiry = resetPasswordTokenExpiry;
+
+        await user.save();
+
+        // dev only: print reset link to console for manual testing without email
+        if (process.env.NODE_ENV !== "production") {
+            console.log(
+                "\n[DEV] Reset link for " + user.email + ":\n" +
+                emailTemplates.frontendUrl() +
+                "/reset-password?token=" + resetPasswordToken + "\n"
+            );
+        }
+
+        // Send the raw token in the email attached to the url
+        try {
+            await sendEmail({
+                to: user.email,
+                ...emailTemplates.passwordReset({ resetToken: resetPasswordToken })
+            });
+        } catch (emailError) {
+            console.error("Email sending error:", emailError);
+        }
+
+        res.status(200).json({
+            message: "If the email exists, a reset link has been sent."
+        });
+
     }
+    catch (err) {
+        console.error("Error during forgot password: ", err);
+        return res.status(500).json({
+            message: "Server error during forgot password"
+        });
+    }
+}
 
-    const resetToken = crypto.randomBytes(32).toString("hex");
-    const tokenExpiry = new Date(Date.now() + 60 * 60 * 1000); // 1 hour
-
-    user.reset_token = resetToken;
-    user.reset_token_expiry = tokenExpiry;
-    await user.save();
-
-    const resetUrl = `${process.env.FRONTEND_URL}/reset-password?token=${resetToken}`;
-    await sendEmail({
-      to: user.email,
-      subject: "HMS — Password Reset Request",
-      html: `
-        <h2>Password Reset</h2>
-        <p>You requested a password reset. Click the link below to set a new password:</p>
-        <a href="${resetUrl}" target="_blank">${resetUrl}</a>
-        <p>This link expires in <strong>1 hour</strong>.</p>
-        <p>If you did not request this, please ignore this email.</p>
-      `,
-    });
-
-    res
-      .status(200)
-      .json({ message: "If that email exists, a reset link has been sent" });
-  } catch (err) {
-    console.error("Forgot password error:", err);
-    res.status(500).json({ message: err.message });
-  }
-};
-
-// ─── RESET PASSWORD ────────────────────────────────────────────────────────
+// Validate the reset token and set a new password
 exports.resetPassword = async (req, res) => {
-  try {
-    const { token, password } = req.body;
 
-    const user = await User.findOne({
-      reset_token: token,
-      reset_token_expiry: { $gt: new Date() },
-    });
+    try {
+        const {
+            resetToken,
+            newPassword,
+            confirmPassword
+        } = req.body;
 
-    if (!user) {
-      return res
-        .status(400)
-        .json({ message: "Invalid or expired reset token" });
+        if (newPassword !== confirmPassword) {
+            return res.status(400).json({
+                message: "Passwords do not match!!"
+            });
+        }
+
+        // Hash the incoming token to look it up against the stored hash
+        const hashedToken =
+            crypto
+                .createHash("sha256")
+                .update(resetToken)
+                .digest("hex");
+
+        const user = await User.findOne({
+            resetPasswordTokenHash: hashedToken,
+            resetPasswordTokenExpiry: {
+                $gt: new Date()
+            }
+        });
+
+        if (!user){
+            return res.status(400).json({
+                message: "Invalid or expired token"
+            });
+        }
+
+        if (String(user.status) !== "ACTIVE"){
+            return res.status(400).json({
+                message: "Invalid or expired token"
+            })
+        }
+
+        const isSamePassword = Boolean(await bcrypt.compare(newPassword, user.passwordHash));
+        if (isSamePassword){
+            return res.status(400).json({
+                message: "New password cannot be the same as current password"
+            });
+        }
+
+        // Hash the new password and clear the reset token fields
+        const newHash = await bcrypt.hash(newPassword, 10);
+
+        user.passwordHash = newHash;
+
+        user.resetPasswordTokenHash = null;
+        user.resetPasswordTokenExpiry = null;
+        user.mustChangePassword = false;
+
+        await user.save();
+
+        res.status(200).json({
+            message: "Password reset successful"
+        })
+
     }
+    catch (err) {
+        console.error("Error during reset password: ", err);
+        res.status(500).json({
+            message: "Server error during reset password"
+        });
+    }
+}
 
-    user.password_hash = await bcrypt.hash(password, 12);
-    user.reset_token = null;
-    user.reset_token_expiry = null;
-    await user.save();
+// Stateless logout — JWT invalidation is handled client-side
+exports.logout = (req, res) => {
+    res.status(200).json({
+        message: "User has been logged out successfully"
+    });
+}
 
-    res
-      .status(200)
-      .json({ message: "Password reset successful. You can now log in." });
-  } catch (err) {
-    console.error("Reset password error:", err);
-    res.status(500).json({ message: err.message });
-  }
-};
+// Return the current user's account and profile (used on page refresh)
+exports.me = async (req, res) => {
+    try {
+        return await getCurrentUser(req.user.employeeCode, res);
+    }
+    catch (err) {
+        console.error("Error during me: ", err);
+        return res.status(500).json({
+            message: "Server error while fetching current user"
+        });
+    }
+}
+
+// Submit a self-registration request
+exports.selfRegister = async (req, res) => {
+
+    const { username, email, password, designation } = req.body;
+
+    try {
+        if (RESTRICTED_ROLES_SET.has(designation)) {
+            return res.status(403).json({
+                message:
+                    "Invalid designation. Cannot create admin or owner accounts."
+            });
+        }
+
+        const uniquenessResult = await validateUniqueEmployeeFields(req.body);
+
+        if (!uniquenessResult.success) {
+            return res.status(uniquenessResult.status).json({
+                message: uniquenessResult.message
+            });
+        }
+
+        const passwordHash = await bcrypt.hash(password, 10);
+
+        const employeeData = buildEmployeeData(req.body);
+
+        const employee = new Employee(employeeData);
+        await employee.save();
+
+        const user = new User({
+            username,
+            email,
+            passwordHash,
+            roles: ["STAFF"],
+            employeeCode: employee.employeeCode,
+            status: "PENDING",
+            mustChangePassword: false,
+            createdByAdmin: false,
+            approvedBy: null,
+            approvedAt: null,
+            createdBy: "Self registration"
+        });
+
+        await user.save();
+
+        // Notify all active admins and owners of the pending registration
+        try {
+            const admins = await User.find({
+                roles: { $in: ["ADMIN", "OWNER"] },
+                status: "ACTIVE"
+            });
+
+            const adminEmails = admins.map((admin) => admin.email);
+
+            if (adminEmails.length) {
+                await sendEmail({
+                    to: adminEmails,
+                    ...emailTemplates.registrationRequest({
+                        name: employee.name,
+                        employeeCode: employee.employeeCode,
+                        department: employee.department,
+                        designation: employee.designation
+                    })
+                });
+            }
+        } catch (emailError) {
+            console.error("Admin notification email error:", emailError);
+        }
+
+        return res.status(201).json({
+            message: "Registration request successful. Wait for admin approval.",
+
+            user: {
+                username: user.username,
+                email: user.email,
+                roles: user.roles
+            },
+
+            employee: {
+                employeeCode: employee.employeeCode,
+                name: employee.name,
+                department: employee.department,
+                designation: employee.designation
+            }
+        });
+    }
+    catch (err) {
+        console.error("Employee self registration error:", err);
+
+        return res.status(500).json({
+            message: "Server error during employee self registration"
+        });
+    }
+}

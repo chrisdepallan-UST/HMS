@@ -1,50 +1,60 @@
 require("dotenv").config();
+
 const express = require("express");
 const cors = require("cors");
 const helmet = require("helmet");
 const morgan = require("morgan");
+
+const authRoutes = require("./routes/authRoutes");
+const adminRoutes = require("./routes/adminRoutes");
+const ownerRoutes = require("./routes/ownerRoutes");
+const patientRoutes = require("./routes/patientRoutes");
+const appointmentRoutes = require("./routes/appointmentRoutes");
+const employeeRoutes = require("./routes/employeeRoutes");
+const nodeRoutes = require("./routes/nodeRoutes");
 const mongoose = require("mongoose");
-const { swaggerUi, swaggerDocument } = require("../swagger/swagger");
 
 const app = express();
-// Used for secure http
+
+// Used for secure HTTP headers
 app.use(helmet());
+
+// Enable CORS
 app.use(
   cors({
     origin: process.env.FRONTEND_URL,
     credentials: true,
-  }),
+  })
 );
 
-//middleware which logs requests
+// Middleware which logs requests
 app.use(morgan("dev"));
-// Read JSON data sent from frontend/Postman and make it available in req.body.
+
+// Read JSON data sent from frontend/Postman
 app.use(express.json());
 
-// app.use("/api-docs", swaggerUi.serve, swaggerUi.setup(swaggerDocument));
-app.use(
-  "/api-docs",
-  swaggerUi.serve,
-  swaggerUi.setup(swaggerDocument, {
-    customCssUrl:
-      "https://cdnjs.cloudflare.com/ajax/libs/swagger-ui/4.18.3/swagger-ui.min.css",
-    customJs: [
-      "https://cdnjs.cloudflare.com/ajax/libs/swagger-ui/4.18.3/swagger-ui-bundle.js",
-      "https://cdnjs.cloudflare.com/ajax/libs/swagger-ui/4.18.3/swagger-ui-standalone-preset.js",
-    ],
-  }),
-);
+app.get("/api/db-status", (req, res) => {
+  res.json({
+    readyState: mongoose.connection.readyState,
+    host: mongoose.connection.host,
+    dbName: mongoose.connection.name,
+  });
+});
 
-const authRoutes = require("./routes/authRoutes");
-const appointmentRoutes = require("./routes/appointmentRoutes");
-app.use("/api", appointmentRoutes);
+// Routes
 app.use("/api/auth", authRoutes);
+app.use("/api/admin", adminRoutes);
+app.use("/api/owner", ownerRoutes);
+app.use("/api/patients", patientRoutes);
+app.use("/api/appointments", appointmentRoutes);
+app.use("/api/employees", employeeRoutes);
+app.use("/api/nodes", nodeRoutes);
 
-app.get("/", (req, res) => res.json({ message: "API running" }));
-
-mongoose
-  .connect(process.env.MONGO_URI)
-  .then(() => console.log("MongoDB connected"))
-  .catch((err) => console.error("MongoDB connection error:", err.message));
+// Default route
+app.get("/", (req, res) =>
+  res.json({
+    message: "API running",
+  })
+);
 
 module.exports = app;

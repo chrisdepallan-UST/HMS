@@ -1,26 +1,93 @@
 const express = require("express");
 const router = express.Router();
-const { body } = require("express-validator");
-const validate = require("../middleware/validate");
-const auth = require("../middleware/authMiddleware");
-// const { createAppointment,getAppointment,getAppointmentsForDoctoruser,getAppointmentsForPatientuser,deleteAppointment,updateAppointment } = require("../controllers/appointmentController");
-const appointmentController= require("../controllers/appointmentController");
-// const
-const appointmentValidation = [
-  body("patientId").notEmpty().withMessage("Id for patient is required"),
-  body("doctorId").notEmpty().withMessage("Id for doctor is required"),
-  body("appointmentDate").notEmpty().withMessage("Date is required"),
-  body("timeSlot").notEmpty().withMessage("Time slot is required"),
-  body("reason").notEmpty().withMessage("Reason is required")
-];
+const validate = require("../middlewares/validate");
+const auth = require("../middlewares/authMiddleware");
+const authorizeDesignation = require("../middlewares/authorizeDesignations");
+const controller = require("../controllers/appointmentController");
+const {
+    createAppointmentValidation,
+    bookedSlotsValidation,
+    appointmentIdValidation
+} = require("../validators/appointmentValidators");
 
-router.post("/appointments", appointmentValidation, validate, appointmentController.createAppointment);
-// router.get("/getappointments", appointmentValidation, validate,auth, getAppointment);
-router.get('/appointments/doctor/:id', appointmentController.getAppointmentsForDoctoruser);
-router.get('/appointments/patient/:id', appointmentController.getAppointmentsForPatientuser);
+// All the routes require authentication
+router.use(auth);
 
-router.get('/appointments/:id', appointmentController.getAppointment);
-router.delete("/appointments/delete", appointmentController.deleteAppointment);
-router.put("/appointments/:appointmentId", appointmentController.updateAppointment);
-router.delete("/appointments/:appointmentId", appointmentController.deleteAppointment);
+// Authorization level shortcuts used across appointment routes
+const RECEPTION_LEVEL = authorizeDesignation(
+    "OWNER",
+    "ADMIN",
+    "RECEPTIONIST"
+);
+
+const DOCTOR_LEVEL = authorizeDesignation("DOCTOR");
+
+const VIEW_LEVEL = authorizeDesignation(
+    "OWNER",
+    "ADMIN",
+    "RECEPTIONIST",
+    "DOCTOR"
+);
+
+// Appointment CRUD routes
+router.post(
+    "/create-appointment",
+    RECEPTION_LEVEL,
+    createAppointmentValidation,
+    validate,
+    controller.createAppointment
+);
+
+router.get(
+    "/my",
+    DOCTOR_LEVEL,
+    controller.getMyAppointments
+);
+
+router.get(
+    "/booked-slots",
+    RECEPTION_LEVEL,
+    bookedSlotsValidation,
+    validate,
+    controller.getBookedSlots
+);
+
+router.get(
+    "/",
+    VIEW_LEVEL,
+    controller.getAppointments
+);
+
+router.get(
+    "/:appointmentId",
+    VIEW_LEVEL,
+    appointmentIdValidation,
+    validate,
+    controller.getAppointmentById
+);
+
+router.put(
+    "/:appointmentId",
+    RECEPTION_LEVEL,
+    [...appointmentIdValidation, ...createAppointmentValidation],
+    validate,
+    controller.updateAppointment
+);
+
+router.put(
+    "/:appointmentId/cancel",
+    RECEPTION_LEVEL,
+    appointmentIdValidation,
+    validate,
+    controller.cancelAppointment
+);
+
+router.put(
+    "/:appointmentId/complete",
+    DOCTOR_LEVEL,
+    appointmentIdValidation,
+    validate,
+    controller.completeAppointment
+);
+
 module.exports = router;
