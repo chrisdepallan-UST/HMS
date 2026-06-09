@@ -32,15 +32,15 @@ const patientSchema = new mongoose.Schema({
         required: true
     },
     address: {
-        houseName: { type: String, required: true },
-        houseNumber: { type: String, required: true },
-        city: { type: String, required: true },
-        postCode: { type: String, required: true }
+        houseName: { type: String },
+        houseNumber: { type: String },
+        city: { type: String },
+        postCode: { type: String }
     },
     emergencyContact: {
-        contactName: { type: String, required: true },
-        relationship: { type: String, required: true },
-        contactNumber: { type: String, required: true }
+        contactName: { type: String },
+        relationship: { type: String },
+        contactNumber: { type: String }
     },
     status: {
         type: String,
