@@ -35,7 +35,7 @@ router.get(
 // Active doctors list (for appointment booking dropdown)
 router.get(
     "/doctors",
-    authorizeDesignation("OWNER", "ADMIN", "RECEPTIONIST"),
+    authorizeDesignation("OWNER", "ADMIN", "RECEPTIONIST", "DOCTOR"),
     controller.getDoctors
 );
 
