@@ -14,6 +14,7 @@ const employeeRoutes = require("./routes/employeeRoutes");
 const nodeRoutes = require("./routes/nodeRoutes");
 const patientAuthRoutes = require("./routes/patientAuthRoutes");
 const patientAppointmentRoutes = require("./routes/patientAppointmentRoutes");
+const doctorRoutes = require("./routes/doctorRoutes");
 const mongoose = require("mongoose");
 
 const app = express();
@@ -53,6 +54,7 @@ app.use("/api/employees", employeeRoutes);
 app.use("/api/nodes", nodeRoutes);
 app.use("/api/patient-auth", patientAuthRoutes);
 app.use("/api/patient-appointments", patientAppointmentRoutes);
+app.use("/api/doctors", doctorRoutes);
 
 // Default route
 app.get("/", (req, res) =>
