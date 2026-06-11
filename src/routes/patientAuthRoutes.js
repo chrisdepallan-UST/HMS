@@ -32,5 +32,6 @@ const loginValidation = [
 router.post("/register", registerValidation, validate, controller.register);
 router.post("/login", loginValidation, validate, controller.login);
 router.get("/me", patientAuth, controller.me);
+router.patch("/me", patientAuth, controller.updateMe);
 
 module.exports = router;

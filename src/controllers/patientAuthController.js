@@ -87,6 +87,26 @@ exports.login = async (req, res) => {
     }
 };
 
+// Update the authenticated patient's own profile
+exports.updateMe = async (req, res) => {
+    try {
+        const { name, phone, address, emergencyContact } = req.body;
+        const patient = await Patient.findOne({ UHID: req.patient.patientId });
+        if (!patient) {
+            return res.status(404).json({ message: "Patient not found" });
+        }
+        if (name !== undefined) patient.name = name;
+        if (phone !== undefined) patient.phone = phone;
+        if (address !== undefined) patient.address = { ...patient.address?.toObject?.() ?? patient.address ?? {}, ...address };
+        if (emergencyContact !== undefined) patient.emergencyContact = { ...patient.emergencyContact?.toObject?.() ?? patient.emergencyContact ?? {}, ...emergencyContact };
+        await patient.save();
+        return res.status(200).json({ message: "Profile updated successfully", patient });
+    } catch (err) {
+        console.error("Patient updateMe error:", err);
+        return res.status(500).json({ message: "Server error while updating profile" });
+    }
+};
+
 // Return the authenticated patient's profile
 exports.me = async (req, res) => {
     try {
