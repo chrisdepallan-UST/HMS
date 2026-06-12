@@ -53,7 +53,9 @@ const patientSchema = new mongoose.Schema({
     },
     createdByEmployeeId: {
         type: String,
-    }
+    },
+    passwordResetOtp: { type: String },
+    passwordResetExpiry: { type: Date }
 });
 
 // Pre-save hook to generate sequential patient id as UHID

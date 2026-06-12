@@ -33,5 +33,8 @@ router.post("/register", registerValidation, validate, controller.register);
 router.post("/login", loginValidation, validate, controller.login);
 router.get("/me", patientAuth, controller.me);
 router.patch("/me", patientAuth, controller.updateMe);
+router.post("/forgot-password", controller.forgotPassword);
+router.post("/reset-password", controller.resetPassword);
+router.post("/change-password", controller.changePassword);
 
 module.exports = router;

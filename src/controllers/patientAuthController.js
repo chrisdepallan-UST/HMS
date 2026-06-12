@@ -1,6 +1,8 @@
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 const Patient = require("../models/Patients");
+const sendEmail = require("../utils/sendEmail");
+const emailTemplates = require("../utils/emailTemplates");
 require("dotenv").config();
 
 // Self-registration for patients (creates a patient record)
@@ -124,5 +126,91 @@ exports.me = async (req, res) => {
     } catch (err) {
         console.error("Patient me error:", err);
         return res.status(500).json({ message: "Server error while fetching profile" });
+    }
+};
+
+// Send a 6-digit OTP to the patient's email for password reset
+exports.forgotPassword = async (req, res) => {
+    try {
+        const { email } = req.body;
+        if (!email) return res.status(400).json({ message: "Email is required" });
+
+        const patient = await Patient.findOne({ email });
+        // Return 200 regardless to prevent email enumeration
+        if (!patient) {
+            return res.status(200).json({ message: "If an account with that email exists, an OTP has been sent." });
+        }
+
+        const otp = Math.floor(100000 + Math.random() * 900000).toString();
+        patient.passwordResetOtp = await bcrypt.hash(otp, 10);
+        patient.passwordResetExpiry = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
+        await patient.save();
+
+        try {
+            await sendEmail({ to: patient.email, ...emailTemplates.patientPasswordOtp({ patientName: patient.name, otp }) });
+        } catch (emailErr) {
+            console.error("OTP email error:", emailErr);
+        }
+
+        return res.status(200).json({ message: "OTP sent to your email." });
+    } catch (err) {
+        console.error("Forgot password error:", err);
+        return res.status(500).json({ message: "Server error" });
+    }
+};
+
+// Verify OTP and set a new password
+exports.resetPassword = async (req, res) => {
+    try {
+        const { email, otp, newPassword } = req.body;
+        if (!email || !otp || !newPassword) {
+            return res.status(400).json({ message: "Email, OTP and new password are required" });
+        }
+
+        const patient = await Patient.findOne({ email });
+        if (!patient || !patient.passwordResetOtp || !patient.passwordResetExpiry) {
+            return res.status(400).json({ message: "Invalid or expired OTP" });
+        }
+        if (patient.passwordResetExpiry < new Date()) {
+            return res.status(400).json({ message: "OTP has expired. Please request a new one." });
+        }
+        const otpMatch = await bcrypt.compare(otp, patient.passwordResetOtp);
+        if (!otpMatch) return res.status(400).json({ message: "Incorrect OTP" });
+
+        patient.passwordHash = await bcrypt.hash(newPassword, 10);
+        patient.passwordResetOtp = undefined;
+        patient.passwordResetExpiry = undefined;
+        patient.mustChangePassword = false;
+        await patient.save();
+
+        return res.status(200).json({ message: "Password reset successfully. You can now log in." });
+    } catch (err) {
+        console.error("Reset password error:", err);
+        return res.status(500).json({ message: "Server error" });
+    }
+};
+
+// Change password using current password (no OTP required)
+exports.changePassword = async (req, res) => {
+    try {
+        const { email, currentPassword, newPassword } = req.body;
+        if (!email || !currentPassword || !newPassword) {
+            return res.status(400).json({ message: "Email, current password and new password are required" });
+        }
+
+        const patient = await Patient.findOne({ email });
+        if (!patient) return res.status(401).json({ message: "Invalid email or password" });
+
+        const isMatch = await bcrypt.compare(currentPassword, patient.passwordHash);
+        if (!isMatch) return res.status(401).json({ message: "Current password is incorrect" });
+
+        patient.passwordHash = await bcrypt.hash(newPassword, 10);
+        patient.mustChangePassword = false;
+        await patient.save();
+
+        return res.status(200).json({ message: "Password changed successfully." });
+    } catch (err) {
+        console.error("Change password error:", err);
+        return res.status(500).json({ message: "Server error" });
     }
 };

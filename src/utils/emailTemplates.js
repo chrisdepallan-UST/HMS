@@ -200,6 +200,20 @@ const appointmentCanceled = ({
   `),
 });
 
+// OTP email for patient self-service password reset
+const patientPasswordOtp = ({ patientName, otp }) => ({
+  subject: "MediCare+ Password Reset OTP",
+  html: wrap(`
+    <h2>Password Reset Request</h2>
+    <p>Hi ${patientName},</p>
+    <p>Use the OTP below to reset your MediCare+ password. It expires in <strong>10 minutes</strong>.</p>
+    <div style="margin:24px 0;text-align:center;">
+      <span style="font-size:36px;font-weight:700;letter-spacing:10px;color:#2e9466;">${otp}</span>
+    </div>
+    <p>If you did not request this, you can safely ignore this email.</p>
+  `),
+});
+
 // Password reset request by employee- email with resetToken embedded in url is sent to the employee
 const passwordReset = ({ resetToken }) => ({
   subject: "HMS Password Reset Request",
@@ -232,4 +246,5 @@ module.exports = {
   appointmentUpdated,
   appointmentCanceled,
   passwordReset,
+  patientPasswordOtp,
 };
