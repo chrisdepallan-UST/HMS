@@ -36,7 +36,7 @@ on:
 
 env:
   AWS_REGION: us-east-2
-  ECR_REPOSITORY: hms
+  ECR_REPOSITORY: my-ecr-repo
   CONTAINER_NAME: hms
   # Host port published on the EC2 instance -> container's port 5000.
   HOST_PORT: 80
