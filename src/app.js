@@ -59,7 +59,7 @@ app.use("/api/doctors", doctorRoutes);
 // Default route
 app.get("/", (req, res) =>
   res.json({
-    message: "API running",
+    message: "API was always running",
   })
 );
 
