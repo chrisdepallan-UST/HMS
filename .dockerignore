@@ -1,0 +1,31 @@
+# Dependencies (reinstalled inside the image)
+node_modules
+npm-debug.log*
+
+# Git / CI
+.git
+.github
+.gitignore
+
+# Secrets & local env (inject these at runtime instead)
+.env
+.env.*
+
+# Tests & coverage
+tests
+coverage
+*.lcov
+
+# Editor / tooling
+.vscode
+.claude
+
+# Platform configs not used by the container
+vercel.json
+
+# Docker
+Dockerfile
+.dockerignore
+
+# Docs
+*.md
