@@ -15,17 +15,20 @@
 #
 # 3. Add these GitHub repository secrets
 #    (Settings -> Secrets and variables -> Actions):
-#      AWS_ACCESS_KEY_ID      IAM user key used by the workflow to push to ECR
-#      AWS_SECRET_ACCESS_KEY  ...matching secret
-#      EC2_HOST               Public IP / DNS of the EC2 instance
-#      EC2_USER               SSH user (e.g. "ec2-user" or "ubuntu")
-#      EC2_SSH_KEY            Private SSH key (full PEM contents) for that user
-#      MONGO_URI              MongoDB Atlas connection string
-#      JWT_SECRET             App JWT signing secret
-#      JWT_EXPIRES_IN         e.g. "5d"
-#      BREVO_API_KEY          Brevo email API key
-#      EMAIL_USER             Sender email address
-#      FRONTEND_URL           Allowed CORS origin (frontend URL)
+#
+#    | Secret                | Value                                          |
+#    | --------------------- | ---------------------------------------------- |
+#    | AWS_ACCESS_KEY_ID     | IAM user key used by the workflow to push to ECR |
+#    | AWS_SECRET_ACCESS_KEY | ...matching secret                             |
+#    | EC2_HOST              | Public IP / DNS of the EC2 instance            |
+#    | EC2_USER              | SSH user (e.g. "ec2-user" or "ubuntu")         |
+#    | EC2_SSH_KEY           | Private SSH key (full PEM contents) for that user |
+#    | MONGO_URI             | MongoDB Atlas connection string                |
+#    | JWT_SECRET            | App JWT signing secret                         |
+#    | JWT_EXPIRES_IN        | e.g. "5d"                                      |
+#    | BREVO_API_KEY         | Brevo email API key                            |
+#    | EMAIL_USER            | Sender email address                           |
+#    | FRONTEND_URL          | Allowed CORS origin (frontend URL)             |
 # -----------------------------------------------------------------------------
 
 name: Deploy to Amazon EC2
